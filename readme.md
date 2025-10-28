@@ -1,0 +1,1 @@
+# A playground for learning MongoDB with Java

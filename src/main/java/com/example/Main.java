@@ -1,72 +1,47 @@
 package com.example;
 
-import com.mongodb.ConnectionString;
-import com.mongodb.MongoClientSettings;
-import com.mongodb.MongoException;
-import com.mongodb.ServerApi;
-import com.mongodb.ServerApiVersion;
+import com.example.util.ConfigUtil;
+import com.example.util.MongoDBUtil;
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.Properties;
+
+import com.mongodb.client.MongoCollection;
+import static com.mongodb.client.model.Filters.eq;
 
 public class Main {
     public static void main(String[] args) {
+        
         // Load configuration from properties file
-        Properties config = loadConfig();
-        String connectionString = config.getProperty("mongodb.connection.string");
-        String databaseName = config.getProperty("mongodb.database.name", "admin");
-
-        if (connectionString == null || connectionString.trim().isEmpty()) {
-            System.err.println("Error: MongoDB connection string not found in config.properties");
-            System.err.println("Please copy example.properties to config.properties and fill in your MongoDB credentials");
+        Properties config = ConfigUtil.loadConfig();
+        String uri;
+        try {
+            uri = ConfigUtil.getRequiredProperty(config, "mongodb.connection.string");
+        } catch (IllegalArgumentException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
             return;
         }
-
-        ServerApi serverApi = ServerApi.builder()
-                .version(ServerApiVersion.V1)
-                .build();
-
-        MongoClientSettings settings = MongoClientSettings.builder()
-                .applyConnectionString(new ConnectionString(connectionString))
-                .serverApi(serverApi)
-                .build();
-
-        // Create a new client and connect to the server
-        try (MongoClient mongoClient = MongoClients.create(settings)) {
-            try {
-                // Send a ping to confirm a successful connection
-                MongoDatabase database = mongoClient.getDatabase(databaseName);
-                database.runCommand(new Document("ping", 1));
-                System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
-            } catch (MongoException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private static Properties loadConfig() {
-        Properties config = new Properties();
-        try (InputStream input = Main.class.getClassLoader().getResourceAsStream("config.properties")) {
-            if (input == null) {
-                System.err.println("Warning: config.properties not found. Using example.properties as template.");
-                System.err.println("Please copy example.properties to config.properties and fill in your MongoDB credentials");
-                // Try to load example.properties as fallback
-                try (InputStream exampleInput = Main.class.getClassLoader().getResourceAsStream("example.properties")) {
-                    if (exampleInput != null) {
-                        config.load(exampleInput);
-                    }
-                }
+        try (MongoClient mongoClient = MongoDBUtil.createClient(uri)) {
+            MongoDatabase database = MongoDBUtil.getDatabase(mongoClient, "sample_mflix");
+            MongoCollection<Document> collection = database.getCollection("movies");
+            Document doc = collection.find(eq("title", "Back to the Future")).first();
+            
+            if (doc != null) {
+                System.out.println("\n=== 查询结果 ===");
+                System.out.println("标题: " + doc.getString("title"));
+                System.out.println("年份: " + doc.getInteger("year"));
+                System.out.println("\n完整文档:");
+                System.out.println(doc.toJson());
             } else {
-                config.load(input);
+                System.out.println("未找到匹配的文档");
             }
-        } catch (IOException e) {
-            System.err.println("Error loading configuration: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("错误: " + e.getMessage());
+            e.printStackTrace();
         }
-        return config;
     }
+
 }
